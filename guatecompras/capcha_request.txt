@@ -1,0 +1,31 @@
+if captcha_api:
+    req = requests.post("https://2captcha.com/in.php", json={
+        "key": captcha_api,
+        "method": "base64",
+        "body": img.screenshot_as_base64,
+        "json": 1
+    }, timeout=30)
+    res = req.json()
+    if "status" in res and str(res["status"]) == "1" and "request" in res:
+        captcha_id = str(res["request"])
+        while True:
+            time.sleep(5)
+            req = requests.get(
+                "https://2captcha.com/res.php?json=1&key="
+                + captcha_api + "&action=get&id=" + str(captcha_id),
+                timeout=30
+            )
+            res = req.json()
+            if "status" in res and str(res["status"]) == "1" and "request" in res:
+                field.send_keys(res["request"])
+                time.sleep(1)
+                driver.find_element(By.ID, "MasterGC_ContentBlockHolder_btnBuscar").click()
+                time.sleep(3)
+                break
+            if "error_text" in res:
+                print(res["error_text"])
+                sys.exit()
+    elif "error_text" in res:
+        print(res["error_text"])
+        sys.exit()
+
