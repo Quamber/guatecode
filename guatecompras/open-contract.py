@@ -1,24 +1,37 @@
 """ https://www.fiverr.com/abhijitk260 """
 import time
 import sqlite3
-from selenium import webdriver
+import random
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+import undetected_chromedriver as uc
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from seleniumbase import Driver
 
 
-db_connection = sqlite3.connect("data.db")
+def random_delay(min_seconds=1, max_seconds=5):
+    time.sleep(random.uniform(min_seconds, max_seconds))
+
+driver = Driver(uc=True, log_cdp=True, headless=False, no_sandbox=True, proxy=False)
+driver.refresh
+
+db_connection = sqlite3.connect("data2.db")
 db_cursor = db_connection.cursor()
 
-driver = webdriver.Chrome()
-
-
 driver.get("http://www.guatecompras.gt/")
-time.sleep(2)
+driver.refresh
+
+random_delay(2, 5)
 
 driver.find_element(By.ID, "lnk-contratos").click()
+# contratos_link = WebDriverWait(driver, 10).until(
+#     EC.element_to_be_clickable((By.ID, "lnk-contratos"))
+# )
+# contratos_link.click()
 
 links = driver.find_elements(By.CSS_SELECTOR, "#MasterGC_ContentBlockHolder_grid .FilaTablaDetalle td:nth-child(2) a")
 link_list = [a.get_attribute("href") for a in links]
-
 
 for link in link_list:
 
@@ -150,7 +163,6 @@ for link in link_list:
             db_cursor.executemany(
                 "INSERT INTO `open_contract_products` (nog, category, products, suppliers, product_types, product_types_products, product_types_suppliers, current_price, brand, supplier, stock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", crows)
             db_connection.commit()
-
 
 
 driver.quit()

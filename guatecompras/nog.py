@@ -4,12 +4,14 @@ import csv
 import time
 import sqlite3
 import requests
-from selenium import webdriver
+import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
+from selenium.webdriver import ActionChains
+from selenium.webdriver.chrome.options import Options
+from seleniumbase import Driver
 
 """
 CREATE TABLE "contest_details" (
@@ -84,8 +86,15 @@ with open('nog-list.txt', encoding="utf-8") as f:
         if x and x[0] not in nog_list:
             nog_list.append(x[0])
 
-driver = webdriver.Chrome()
+driver = Driver(uc=True, log_cdp=True, headless=False, no_sandbox=True, proxy=False)
 
+def random_sleep(min_seconds, max_seconds):
+    time.sleep(random.uniform(min_seconds, max_seconds))
+
+def human_like_input(element, text):
+    for char in text:
+        element.send_keys(char)
+        random_sleep(0.1, 0.3)
 
 def next_page():
     """ Next Page"""
@@ -106,7 +115,6 @@ def solve_turnstile_captcha(driver, captcha_api, site_key, page_url):
     Solve Cloudflare Turnstile CAPTCHA using a third-party service like 2Captcha.
     """
     try:
-        # Submit CAPTCHA-solving request to 2Captcha
         print("Sending Turnstile CAPTCHA for solving...")
         req = requests.post("https://2captcha.com/in.php", json={
             "key": captcha_api,
@@ -117,11 +125,11 @@ def solve_turnstile_captcha(driver, captcha_api, site_key, page_url):
         }, timeout=30)
 
         res = req.json()
+        print("RES: ", res)
         if res.get("status") == 1:
             captcha_id = res["request"]
             print(f"Captcha ID: {captcha_id}")
 
-            # Poll for the CAPTCHA solution
             while True:
                 time.sleep(5)
                 req = requests.get(
@@ -135,10 +143,10 @@ def solve_turnstile_captcha(driver, captcha_api, site_key, page_url):
                     return captcha_solution
                 elif "error_text" in res:
                     print(f"Error: {res['error_text']}")
-                    sys.exit()
+                    return None
         else:
             print(f"Error: {res.get('error_text', 'Unknown error')} while sending Turnstile CAPTCHA.")
-            sys.exit()
+            return None
     except Exception as e:
         print(f"Error solving Turnstile CAPTCHA: {e}")
         return None
@@ -157,6 +165,40 @@ def handle_dialogue_box():
         print(f"Error handling dialogue box: {e}")
         return False
 
+def intercept(driver):
+    driver.execute_script("""
+    console.clear = () => console.log('Console was cleared')
+    const i = setInterval(()=>{
+    if (window.turnstile)
+     console.log('success!!')
+     {clearInterval(i)
+         window.turnstile.render = (a,b) => {
+          let params = {
+                sitekey: b.sitekey,
+                pageurl: window.location.href,
+                data: b.cData,
+                pagedata: b.chlPageData,
+                action: b.action,
+                userAgent: navigator.userAgent,
+                json: 1
+            }
+            console.log('intercepted-params:' + JSON.stringify(params))
+            window.cfCallback = b.callback
+            return        } 
+    }
+},50)    
+""")
+    time.sleep(1)
+    # Retrieving browser logs containing intercepted parameters
+    logs = driver.get_log("browser")
+    for log in logs:
+        if log['level'] == 'INFO':
+            if "intercepted-params:" in log["message"]:
+                log_entry = log["message"].encode('utf-8').decode('unicode_escape')
+                match = re.search(r'"intercepted-params:({.*?})"', log_entry)
+                json_string = match.group(1)
+                params = json.loads(json_string)
+                return params
 
 def stock_history():
     """stock_history"""
@@ -198,13 +240,14 @@ def stock_history():
 
 for nog in nog_list:
 
-    driver.get("http://www.guatecompras.gt/")
+    driver.get("https://www.guatecompras.gt/")
+    driver.refresh
     time.sleep(3)
 
     field = driver.find_element(By.ID, "ctl00_ContentBlockHolder_txtInputNOG")
-    field.send_keys(nog)
+    human_like_input(field, nog)
     field.send_keys(Keys.ENTER)
-    time.sleep(1)
+    time.sleep(3)
 
     max_attempts = 3
     attempt = 0
@@ -241,7 +284,7 @@ for nog in nog_list:
                 print("Failed to solve CAPTCHA. Retrying...")
                 attempt += 1
         except Exception as e:
-            print(f"Error during CAPTCHA solving or dialogue box handling: {e}")
+            print(f"Error during CAPTCHA solving: {e}")
             attempt += 1
         
         if attempt < max_attempts:
@@ -253,6 +296,7 @@ for nog in nog_list:
     if attempt >= max_attempts:
         continue  # Skip to the next NOG in the list
 
+    print("Current Page: ", driver.current_url)
     driver.find_element(By.XPATH, './/li/a[.="Historial de acciones"]').click()
     time.sleep(1)
     WebDriverWait(driver, 15).until(EC.invisibility_of_element_located(
@@ -262,7 +306,6 @@ for nog in nog_list:
     db_row = ["" for _ in range(22)]
 
     rows = driver.find_elements(By.CSS_SELECTOR, ".TablaForm3 .row")
-    print("++++++++++++++length of rows: ", len(rows))
     for row in rows:
         columns = row.find_elements(By.XPATH, "./*")
         label = columns[0].text.strip()
