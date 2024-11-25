@@ -34,6 +34,4 @@ RUN pip install undetected-chromedriver selenium seleniumbase requests
 
 ENV PYTHONUNBUFFERED=1
 
-ENTRYPOINT ["python3"]
-
-CMD ["nog.py"]
+CMD ["python", "nog.py"]
